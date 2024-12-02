@@ -1,0 +1,10 @@
+<script>
+    const redirectToIndex = () => {
+      const pathname = window.location.pathname;
+      if (!pathname.includes('.') && !pathname.endsWith('/')) {
+        window.history.replaceState({}, document.title, pathname + '/');
+      }
+    };
+    redirectToIndex();
+  </script>
+  
