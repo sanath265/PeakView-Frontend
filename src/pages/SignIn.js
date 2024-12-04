@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Link } from 'react-router-dom';
 import backgroundImage from './images/background.jpg'; // Local background image
 
@@ -11,6 +12,8 @@ const SignIn = () => {
   const [errors, setErrors] = useState({
     email: '',
   });
+
+  const navigate = useNavigate();
 
   const styles = {
     background: {
@@ -29,8 +32,8 @@ const SignIn = () => {
       top: '20px',
       left: '50%',
       transform: 'translateX(-50%)',
-      fontSize: '48px', // Increased size
-      fontFamily: "'Roboto', sans-serif", // New font
+      fontSize: '48px',
+      fontFamily: "'Roboto', sans-serif",
       fontWeight: 'bold',
       color: '#ffffff',
       textShadow: '3px 3px 6px rgba(0, 0, 0, 0.5)',
@@ -94,8 +97,9 @@ const SignIn = () => {
   const handleSubmit = (e) => {
     e.preventDefault();
 
-    if (!errors.email) {
-      alert('Sign In Successful!');
+    if (!errors.email && formData.password) {
+      // Redirect to Dashboard after successful sign-in
+      navigate('/dashboard/inventory');
     } else {
       alert('Please correct the errors.');
     }

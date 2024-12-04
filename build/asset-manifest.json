@@ -1,16 +1,16 @@
 {
   "files": {
     "main.css": "/PeakView-Frontend/static/css/main.e6c13ad2.css",
-    "main.js": "/PeakView-Frontend/static/js/main.b4090d1a.js",
+    "main.js": "/PeakView-Frontend/static/js/main.1805c0fd.js",
     "static/js/453.6c8eca29.chunk.js": "/PeakView-Frontend/static/js/453.6c8eca29.chunk.js",
     "static/media/background.jpg": "/PeakView-Frontend/static/media/background.931adee6dd02c4f4e293.jpg",
     "index.html": "/PeakView-Frontend/index.html",
     "main.e6c13ad2.css.map": "/PeakView-Frontend/static/css/main.e6c13ad2.css.map",
-    "main.b4090d1a.js.map": "/PeakView-Frontend/static/js/main.b4090d1a.js.map",
+    "main.1805c0fd.js.map": "/PeakView-Frontend/static/js/main.1805c0fd.js.map",
     "453.6c8eca29.chunk.js.map": "/PeakView-Frontend/static/js/453.6c8eca29.chunk.js.map"
   },
   "entrypoints": [
     "static/css/main.e6c13ad2.css",
-    "static/js/main.b4090d1a.js"
+    "static/js/main.1805c0fd.js"
   ]
 }
