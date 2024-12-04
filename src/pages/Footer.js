@@ -2,7 +2,14 @@ import React from 'react';
 
 const Footer = () => {
   return (
-    <footer style={{ backgroundColor: 'black', padding: '20px' }}>
+    <footer 
+      style={{ 
+        backgroundColor: 'black', 
+        padding: '20px', 
+        maxHeight: '20vh',   // Adjust to desired max height
+        overflowY: 'auto',   // Enable scrolling if content exceeds maxHeight
+      }}
+    >
       {/* Global styles for bold and hover underline */}
       <style>
         {`
