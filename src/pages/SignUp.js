@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
-import backgroundImage from './images/background.jpg'; // Local image path
+import { Link, useNavigate } from 'react-router-dom';
+import axios from 'axios';
+import backgroundImage from './images/background.jpg'; // Ensure this path exists
 
 const SignUp = () => {
   const [formData, setFormData] = useState({
@@ -17,6 +18,9 @@ const SignUp = () => {
   });
 
   const [passwordStrength, setPasswordStrength] = useState('');
+  const [isPasswordStrong, setIsPasswordStrong] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const navigate = useNavigate();
 
   const styles = {
     background: {
@@ -40,7 +44,7 @@ const SignUp = () => {
     },
     scrollContainer: {
       position: 'absolute',
-      top: '100px', // Below the title
+      top: '100px',
       left: '0',
       right: '0',
       bottom: '0',
@@ -61,13 +65,27 @@ const SignUp = () => {
       textAlign: 'center',
       color: '#1a73e8',
     },
+    inputContainer: {
+      position: 'relative',
+      marginBottom: '15px',
+    },
     input: {
       width: '100%',
       padding: '10px',
-      marginBottom: '15px',
       border: '1px solid #ccc',
       borderRadius: '5px',
       boxSizing: 'border-box',
+    },
+    passwordToggle: {
+      position: 'absolute',
+      top: '50%',
+      right: '10px',
+      transform: 'translateY(-50%)',
+      cursor: 'pointer',
+      background: 'none',
+      border: 'none',
+      fontSize: '16px',
+      color: '#333',
     },
     errorMessage: {
       color: 'red',
@@ -79,16 +97,16 @@ const SignUp = () => {
       fontSize: '12px',
       marginTop: '-10px',
       marginBottom: '15px',
-      color: '#888',
+      color: isPasswordStrong ? 'green' : 'red',
     },
     button: {
       width: '100%',
       padding: '10px',
-      backgroundColor: '#1a73e8',
+      backgroundColor: isPasswordStrong ? '#1a73e8' : '#cccccc',
       color: '#fff',
       border: 'none',
       borderRadius: '5px',
-      cursor: 'pointer',
+      cursor: isPasswordStrong ? 'pointer' : 'not-allowed',
     },
     link: {
       color: '#1a73e8',
@@ -102,19 +120,23 @@ const SignUp = () => {
   };
 
   const validatePhone = (phone) => {
-    const phoneRegex = /^\+?[1-9]\d{9,14}$/; // International format, 10-15 digits
+    const phoneRegex = /^\+?[1-9]\d{9,14}$/;
     return phoneRegex.test(phone)
       ? ''
       : 'Invalid phone number format. Include country code and 10-15 digits.';
   };
 
   const validatePasswordStrength = (password) => {
-    if (password.length < 6) {
-      setPasswordStrength('Weak');
-    } else if (password.length < 10) {
-      setPasswordStrength('Moderate');
-    } else {
+    const hasUpperCase = /[A-Z]/.test(password);
+    const hasNumber = /\d/.test(password);
+    const hasSpecialChar = /[!@#$%^&*(),.?":{}|<>]/.test(password);
+
+    if (password.length >= 15 && hasUpperCase && hasNumber && hasSpecialChar) {
       setPasswordStrength('Strong');
+      setIsPasswordStrong(true);
+    } else {
+      setPasswordStrength('Weak');
+      setIsPasswordStrong(false);
     }
   };
 
@@ -130,13 +152,45 @@ const SignUp = () => {
     if (name === 'password') validatePasswordStrength(value);
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
+
     const emailError = validateEmail(formData.email);
     const phoneError = validatePhone(formData.phone);
 
-    if (!emailError && !phoneError) {
-      alert('Form submitted successfully!');
+    if (!emailError && !phoneError && passwordStrength === 'Strong') {
+      try {
+        const response = await axios.post('/users/', {
+          email: formData.email,
+          password: formData.password,
+        });
+
+        if (response.status === 200 || response.status === 201) {
+          alert('Sign up successful! Please sign in now.');
+          navigate('/signin');
+        }
+      } catch (error) {
+        if (error.response) {
+          const errorMsg = error.response.data.message || 'Failed to sign up.';
+          console.error('Server error:', error.response);
+          if (errorMsg.toLowerCase().includes('email')) {
+            const goToSignIn = window.confirm(
+              'Email already exists. Would you like to go to the Sign In page?'
+            );
+            if (goToSignIn) {
+              navigate('/signin');
+            }
+          } else {
+            alert(`Error: ${errorMsg}`);
+          }
+        } else if (error.request) {
+          console.error('Network error:', error.request);
+          alert('Network error: Unable to reach the server.');
+        } else {
+          console.error('Error:', error.message);
+          alert('Unexpected error occurred.');
+        }
+      }
     } else {
       setErrors({
         email: emailError,
@@ -152,66 +206,85 @@ const SignUp = () => {
         <div style={styles.container}>
           <h2 style={styles.title}>Sign Up</h2>
           <form onSubmit={handleSubmit}>
-            <input
-              type="text"
-              name="firstName"
-              placeholder="First Name"
-              style={styles.input}
-              value={formData.firstName}
-              onChange={handleChange}
-              required
-            />
-            <input
-              type="text"
-              name="lastName"
-              placeholder="Last Name"
-              style={styles.input}
-              value={formData.lastName}
-              onChange={handleChange}
-              required
-            />
-            <input
-              type="email"
-              name="email"
-              placeholder="Enter email"
-              style={styles.input}
-              value={formData.email}
-              onChange={handleChange}
-              required
-            />
+            <div style={styles.inputContainer}>
+              <input
+                type="text"
+                name="firstName"
+                placeholder="First Name"
+                style={styles.input}
+                value={formData.firstName}
+                onChange={handleChange}
+                required
+              />
+            </div>
+            <div style={styles.inputContainer}>
+              <input
+                type="text"
+                name="lastName"
+                placeholder="Last Name"
+                style={styles.input}
+                value={formData.lastName}
+                onChange={handleChange}
+                required
+              />
+            </div>
+            <div style={styles.inputContainer}>
+              <input
+                type="email"
+                name="email"
+                placeholder="Enter email"
+                style={styles.input}
+                value={formData.email}
+                onChange={handleChange}
+                required
+              />
+            </div>
             {errors.email && <p style={styles.errorMessage}>{errors.email}</p>}
-            <input
-              type="tel"
-              name="phone"
-              placeholder="Phone Number (Include country code, e.g., +1)"
-              style={styles.input}
-              value={formData.phone}
-              onChange={handleChange}
-              required
-            />
+            <div style={styles.inputContainer}>
+              <input
+                type="tel"
+                name="phone"
+                placeholder="Phone Number (Include country code, e.g., +1)"
+                style={styles.input}
+                value={formData.phone}
+                onChange={handleChange}
+                required
+              />
+            </div>
             {errors.phone && <p style={styles.errorMessage}>{errors.phone}</p>}
-            <select style={styles.input} required>
-              <option value="">Select Gender</option>
-              <option value="male">Male</option>
-              <option value="female">Female</option>
-              <option value="other">Other</option>
-            </select>
-            <input
-              type="password"
-              name="password"
-              placeholder="Password"
-              style={styles.input}
-              value={formData.password}
-              onChange={handleChange}
-              required
-            />
+            <div style={styles.inputContainer}>
+              <select style={styles.input} required>
+                <option value="">Select Gender</option>
+                <option value="male">Male</option>
+                <option value="female">Female</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+            <div style={styles.inputContainer}>
+              <input
+                type={showPassword ? 'text' : 'password'}
+                name="password"
+                placeholder="Password"
+                style={styles.input}
+                value={formData.password}
+                onChange={handleChange}
+                required
+              />
+              <button
+                type="button"
+                style={styles.passwordToggle}
+                onClick={() => setShowPassword(!showPassword)}
+              >
+                {showPassword ? '🙈' : '👁'}
+              </button>
+            </div>
             <p style={styles.passwordStrength}>Password strength: {passwordStrength}</p>
-            <button type="submit" style={styles.button}>
+            <button type="submit" style={styles.button} disabled={!isPasswordStrong}>
               Sign Up
             </button>
           </form>
           <p style={{ textAlign: 'center', marginTop: '15px' }}>
-            Already have an account? <Link to="/" style={styles.link}>Sign In</Link>
+            Already have an account? <Link to="/signin" style={styles.link}>Sign In</Link>
           </p>
         </div>
       </div>
