@@ -43,6 +43,5 @@
   },
   "devDependencies": {
     "gh-pages": "^6.2.0"
-  },
-  "proxy": "https://sanath265.github.io/PeakView-Frontend"
+  }
 }

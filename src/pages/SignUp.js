@@ -160,7 +160,7 @@ const SignUp = () => {
 
     if (!emailError && !phoneError && passwordStrength === 'Strong') {
       try {
-        const response = await axios.post('/users/', {
+        const response = await axios.post('http://34.8.207.205/users/', {
           email: formData.email,
           password: formData.password,
         });

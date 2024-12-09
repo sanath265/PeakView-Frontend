@@ -121,7 +121,7 @@ const SignIn = () => {
 
     if (!errors.email && formData.password) {
       try {
-        const response = await axios.post('/auth/login/', {
+        const response = await axios.post('http://34.8.207.205/auth/login/', {
           email: formData.email,
           password: formData.password,
         });
