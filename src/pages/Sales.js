@@ -4,6 +4,7 @@ import axios from 'axios';
 
 const SalesDashboard = () => {
   const [inventoryProducts, setInventoryProducts] = useState([]);
+  const [inventoryMap, setInventoryMap] = useState({});
   const [products, setProducts] = useState([]);
   const [orders, setOrders] = useState([]);
   const [showTakeSalesModal, setShowTakeSalesModal] = useState(false);
@@ -26,12 +27,19 @@ const SalesDashboard = () => {
       }));
       setInventoryProducts(invData);
 
+      // Create a quick lookup map for inventory prices
+      const invMap = {};
+      invData.forEach(p => {
+        invMap[p.productName] = p.price;
+      });
+      setInventoryMap(invMap);
+
       // Fetch sales data
       const salesRes = await axios.get('/sales/');
       const salesData = salesRes.data;
 
-      const aggregatedProducts = aggregateProductsFromSales(salesData);
-      const newOrders = createOrdersFromSales(salesData);
+      const aggregatedProducts = aggregateProductsFromSales(salesData, invMap);
+      const newOrders = createOrdersFromSales(salesData, invMap);
 
       setProducts(aggregatedProducts);
       setOrders(newOrders);
@@ -40,41 +48,41 @@ const SalesDashboard = () => {
     }
   };
 
-  const aggregateProductsFromSales = (salesData) => {
-    // Aggregate by productName
+  const aggregateProductsFromSales = (salesData, invMap) => {
+    // Aggregate by productName using inventoryMap for price
     const productMap = {};
     for (const sale of salesData) {
       const { productName, quantity } = sale;
-      const Cost = Number(sale.Cost) || 0; // Ensure numeric
+      const price = invMap[productName] ? invMap[productName] : 0; 
       const qty = Number(quantity) || 0;
 
       if (!productMap[productName]) {
         productMap[productName] = {
           productName,
-          price: Cost,
+          price,
           quantitySold: 0,
           totalAmount: 0
         };
       }
       productMap[productName].quantitySold += qty;
-      productMap[productName].totalAmount += Cost * qty;
+      productMap[productName].totalAmount += price * qty;
     }
 
     return Object.values(productMap);
   };
 
-  const createOrdersFromSales = (salesData) => {
-    // Group sales by customerName
+  const createOrdersFromSales = (salesData, invMap) => {
+    // Group sales by customerName and use inventory price
     const grouped = {};
     for (const sale of salesData) {
       const { customerName, productName, quantity } = sale;
-      const Cost = Number(sale.Cost) || 0;
+      const price = invMap[productName] ? invMap[productName] : 0;
       const qty = Number(quantity) || 0;
 
       if (!grouped[customerName]) {
         grouped[customerName] = [];
       }
-      grouped[customerName].push({ productName, quantity: qty, price: Cost });
+      grouped[customerName].push({ productName, quantity: qty, price });
     }
 
     // Convert each group into an order
@@ -151,16 +159,10 @@ const SalesDashboard = () => {
     const updatedItems = [...salesItems];
 
     if (field === 'productName') {
-      // When productName changes, find the product in inventory and set its price
-      const selectedProduct = inventoryProducts.find(p => p.productName === value);
-      if (selectedProduct) {
-        updatedItems[index].productName = value;
-        updatedItems[index].price = selectedProduct.price;
-      } else {
-        // If not found, set price to 0 and maybe alert
-        updatedItems[index].productName = value;
-        updatedItems[index].price = 0;
-      }
+      // When productName changes, find the product in inventoryMap and set its price
+      const selectedPrice = inventoryMap[value] || 0;
+      updatedItems[index].productName = value;
+      updatedItems[index].price = selectedPrice;
     } else {
       updatedItems[index][field] = value;
     }
@@ -184,11 +186,10 @@ const SalesDashboard = () => {
       }
     }
 
-    // Build sales_array for POST
+    // Build sales_array for POST with inventory-based pricing
     const sales_array = salesItems.map(si => {
       const qty = Number(si.quantity) || 0;
       const amount = si.price * qty;
-
       return {
         customerName: customerName,
         productName: si.productName,
@@ -220,9 +221,9 @@ const SalesDashboard = () => {
         const salesRes = await axios.get('/sales/');
         const salesData = salesRes.data;
 
-        // Rebuild products and orders
-        const aggregatedProducts = aggregateProductsFromSales(salesData);
-        const newOrders = createOrdersFromSales(salesData);
+        // Rebuild products and orders using the inventoryMap
+        const aggregatedProducts = aggregateProductsFromSales(salesData, inventoryMap);
+        const newOrders = createOrdersFromSales(salesData, inventoryMap);
 
         setProducts(aggregatedProducts);
         setOrders(newOrders);
