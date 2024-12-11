@@ -121,13 +121,16 @@ const SignIn = () => {
 
     if (!errors.email && formData.password) {
       try {
-        const response = await axios.post('http://34.8.207.205/auth/login/', {
+        const response = await axios.post('/auth/login/', {
           email: formData.email,
           password: formData.password,
         });
 
         if (response.status === 200 || response.status === 201) {
-          // Sign in successful, navigate to dashboard
+          // Sign in successful: store email in localStorage
+          localStorage.setItem('userEmail', formData.email);
+
+          // Navigate to dashboard or account page
           navigate('/dashboard/inventory');
         }
       } catch (error) {

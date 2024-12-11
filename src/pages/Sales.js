@@ -1,56 +1,117 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { jsPDF } from 'jspdf';
+import axios from 'axios';
 
 const SalesDashboard = () => {
-  // Initial product list
-  const [products, setProducts] = useState([
-    { id: 'P-1001', name: 'Product A', price: 100, quantitySold: 0, totalAmount: 0 },
-    { id: 'P-1002', name: 'Product B', price: 150, quantitySold: 0, totalAmount: 0 },
-    { id: 'P-1003', name: 'Product C', price: 200, quantitySold: 0, totalAmount: 0 },
-  ]);
-
-  // Orders
-  const [orders, setOrders] = useState([
-    { orderId: 'O-1001', customer: 'Mark Spencer', items: [{ productId: 'P-1001', qty: 2 }], status: 'Open' },
-    { orderId: 'O-1002', customer: 'Ella Fitzgerald', items: [{ productId: 'P-1002', qty: 1 }, { productId: 'P-1003', qty: 2 }], status: 'Open' },
-    { orderId: 'O-1003', customer: 'Robert Frost', items: [{ productId: 'P-1001', qty: 1 }], status: 'Completed' },
-  ]);
-
-  const [selectedTab, setSelectedTab] = useState('Open'); // 'Open' or 'Completed'
-  const [searchQuery, setSearchQuery] = useState('');
-
-  // Modals
-  const [showAddProductModal, setShowAddProductModal] = useState(false);
-  const [newProductData, setNewProductData] = useState({ id: '', name: '', price: '' });
-
+  const [inventoryProducts, setInventoryProducts] = useState([]);
+  const [products, setProducts] = useState([]);
+  const [orders, setOrders] = useState([]);
   const [showTakeSalesModal, setShowTakeSalesModal] = useState(false);
-  const [salesItems, setSalesItems] = useState([{ productId: '', quantity: '' }]);
+  const [salesItems, setSalesItems] = useState([{ productName: '', quantity: '', price: 0 }]);
   const [customerName, setCustomerName] = useState('');
+  const [selectedOrder, setSelectedOrder] = useState(null);
 
-  // Handlers for completing orders
-  const handleCompleteOrder = (orderId) => {
-    const updated = orders.map(o => {
-      if (o.orderId === orderId && o.status === 'Open') {
-        // Update product sales from order items
-        const updatedProducts = products.map(p => {
-          const orderedItem = o.items.find(i => i.productId === p.id);
-          if (orderedItem) {
-            const newQty = p.quantitySold + orderedItem.qty;
-            const newAmount = p.totalAmount + (p.price * orderedItem.qty);
-            return { ...p, quantitySold: newQty, totalAmount: newAmount };
-          }
-          return p;
-        });
-        setProducts(updatedProducts);
+  useEffect(() => {
+    fetchData();
+  }, []);
 
-        return { ...o, status: 'Completed' };
-      }
-      return o;
-    });
-    setOrders(updated);
+  const fetchData = async () => {
+    try {
+      // Fetch inventory products
+      const inventoryRes = await axios.get('/inventory/');
+      const invData = inventoryRes.data.map(item => ({
+        productName: item.productName,
+        price: Number(item.Cost) || 0,
+        id: item._id
+      }));
+      setInventoryProducts(invData);
+
+      // Fetch sales data
+      const salesRes = await axios.get('/sales/');
+      const salesData = salesRes.data;
+
+      const aggregatedProducts = aggregateProductsFromSales(salesData);
+      const newOrders = createOrdersFromSales(salesData);
+
+      setProducts(aggregatedProducts);
+      setOrders(newOrders);
+    } catch (err) {
+      console.error('Error fetching data:', err);
+    }
   };
 
-  // Handler to generate PDF invoice
+  const aggregateProductsFromSales = (salesData) => {
+    // Aggregate by productName
+    const productMap = {};
+    for (const sale of salesData) {
+      const { productName, quantity } = sale;
+      const Cost = Number(sale.Cost) || 0; // Ensure numeric
+      const qty = Number(quantity) || 0;
+
+      if (!productMap[productName]) {
+        productMap[productName] = {
+          productName,
+          price: Cost,
+          quantitySold: 0,
+          totalAmount: 0
+        };
+      }
+      productMap[productName].quantitySold += qty;
+      productMap[productName].totalAmount += Cost * qty;
+    }
+
+    return Object.values(productMap);
+  };
+
+  const createOrdersFromSales = (salesData) => {
+    // Group sales by customerName
+    const grouped = {};
+    for (const sale of salesData) {
+      const { customerName, productName, quantity } = sale;
+      const Cost = Number(sale.Cost) || 0;
+      const qty = Number(quantity) || 0;
+
+      if (!grouped[customerName]) {
+        grouped[customerName] = [];
+      }
+      grouped[customerName].push({ productName, quantity: qty, price: Cost });
+    }
+
+    // Convert each group into an order
+    const ordersArray = Object.keys(grouped).map(customer => {
+      const orderId = generateRandomOrderId();
+      const items = grouped[customer].map(item => {
+        const itemPrice = Number(item.price) || 0;
+        const itemQty = Number(item.quantity) || 0;
+        return {
+          productName: item.productName,
+          quantity: itemQty,
+          price: itemPrice,
+          total: itemPrice * itemQty
+        };
+      });
+      return {
+        orderId,
+        customer,
+        items,
+      };
+    });
+
+    return ordersArray;
+  };
+
+  const generateRandomOrderId = () => {
+    return 'O-' + Math.random().toString(36).substring(2, 7).toUpperCase();
+  };
+
+  const handleShowOrder = (order) => {
+    setSelectedOrder(order);
+  };
+
+  const handleCloseOrderModal = () => {
+    setSelectedOrder(null);
+  };
+
   const handleGenerateInvoice = (order) => {
     const doc = new jsPDF();
 
@@ -60,146 +121,133 @@ const SalesDashboard = () => {
     doc.setFontSize(12);
     doc.text(`Order ID: ${order.orderId}`, 14, 32);
     doc.text(`Customer: ${order.customer}`, 14, 40);
-    doc.text(`Status: ${order.status}`, 14, 48);
 
-    doc.text('Items:', 14, 60);
+    doc.text('Items:', 14, 50);
 
-    let startY = 70;
+    let startY = 60;
     order.items.forEach((item, index) => {
-      const product = products.find(p => p.id === item.productId);
-      if (product) {
-        doc.text(`${index + 1}. ${product.name} (x${item.qty}) - $${product.price * item.qty}`, 14, startY);
-        startY += 10;
-      }
+      const lineTotal = (Number(item.price) || 0) * (Number(item.quantity) || 0);
+      doc.text(
+        `${index + 1}. ${item.productName} (x${item.quantity}) - $${lineTotal.toFixed(2)}`,
+        14,
+        startY
+      );
+      startY += 10;
     });
 
-    // Calculate total
-    const total = order.items.reduce((acc, item) => {
-      const product = products.find(p => p.id === item.productId);
-      if (product) {
-        return acc + product.price * item.qty;
-      }
-      return acc;
-    }, 0);
-
+    const total = order.items.reduce((acc, i) => acc + ((Number(i.price) || 0) * (Number(i.quantity) || 0)), 0);
     doc.text(`Total Amount: $${total.toFixed(2)}`, 14, startY + 10);
 
     doc.save(`Invoice_${order.orderId}.pdf`);
   };
 
-  // Handlers for adding products
-  const handleAddProduct = () => {
-    setShowAddProductModal(true);
-  };
-
-  const handleNewProductChange = (field, value) => {
-    setNewProductData(prev => ({ ...prev, [field]: value }));
-  };
-
-  const handleSaveProduct = () => {
-    const { id, name, price } = newProductData;
-    if (!id || !name || !price) {
-      alert('Please fill all fields for product');
-      return;
-    }
-    // Check for unique Product ID
-    const existingProduct = products.find(p => p.id === id);
-    if (existingProduct) {
-      alert('Product ID must be unique');
-      return;
-    }
-    const newProduct = {
-      id,
-      name,
-      price: parseFloat(price),
-      quantitySold: 0,
-      totalAmount: 0
-    };
-    setProducts(prev => [...prev, newProduct]);
-    setShowAddProductModal(false);
-    setNewProductData({ id: '', name: '', price: '' });
-  };
-
-  const handleCancelProduct = () => {
-    setShowAddProductModal(false);
-    setNewProductData({ id: '', name: '', price: '' });
-  };
-
-  // Handlers for taking sales
   const handleTakeSales = () => {
     setShowTakeSalesModal(true);
-    setSalesItems([{ productId: '', quantity: '' }]);
+    setSalesItems([{ productName: '', quantity: '', price: 0 }]);
     setCustomerName('');
   };
 
   const handleSalesItemChange = (index, field, value) => {
     const updatedItems = [...salesItems];
-    updatedItems[index][field] = value;
+
+    if (field === 'productName') {
+      // When productName changes, find the product in inventory and set its price
+      const selectedProduct = inventoryProducts.find(p => p.productName === value);
+      if (selectedProduct) {
+        updatedItems[index].productName = value;
+        updatedItems[index].price = selectedProduct.price;
+      } else {
+        // If not found, set price to 0 and maybe alert
+        updatedItems[index].productName = value;
+        updatedItems[index].price = 0;
+      }
+    } else {
+      updatedItems[index][field] = value;
+    }
+
     setSalesItems(updatedItems);
   };
 
   const handleAddSalesItemRow = () => {
-    setSalesItems([...salesItems, { productId: '', quantity: '' }]);
+    setSalesItems([...salesItems, { productName: '', quantity: '', price: 0 }]);
   };
 
-  const handleSaveSales = () => {
+  const handleSaveSales = async () => {
     if (!customerName) {
       alert('Please enter customer name');
       return;
     }
     for (let item of salesItems) {
-      if (!item.productId || !item.quantity) {
+      if (!item.productName || !item.quantity) {
         alert('Please fill all product and quantity details');
         return;
       }
     }
 
-    // Update products table
-    const updatedProducts = products.map(p => {
-      const saleItem = salesItems.find(si => si.productId === p.id);
-      if (saleItem) {
-        const qty = parseInt(saleItem.quantity);
-        const newQtySold = p.quantitySold + qty;
-        const newAmount = p.totalAmount + (p.price * qty);
-        return { ...p, quantitySold: newQtySold, totalAmount: newAmount };
-      }
-      return p;
+    // Build sales_array for POST
+    const sales_array = salesItems.map(si => {
+      const qty = Number(si.quantity) || 0;
+      const amount = si.price * qty;
+
+      return {
+        customerName: customerName,
+        productName: si.productName,
+        quantity: qty,
+        charge: {
+          amount: amount,
+          card: {
+            token: "tok_visa"
+          }
+        }
+      };
     });
 
-    // Add sales order
-    const newOrder = {
-      orderId: `O-${orders.length + 1}`,
-      customer: customerName,
-      items: salesItems.map(si => ({
-        productId: si.productId,
-        qty: parseInt(si.quantity),
-      })),
-      status: 'Open',
+    if (sales_array.length === 0) return;
+
+    const postBody = {
+      sales_array,
+      reset: false
     };
 
-    setProducts(updatedProducts);
-    setOrders([...orders, newOrder]);
-    setShowTakeSalesModal(false);
+    try {
+      const response = await axios.post('/sales/', postBody, {
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+      if (response.status === 200 || response.status === 201) {
+        // After saving sales, refetch sales and re-aggregate
+        const salesRes = await axios.get('/sales/');
+        const salesData = salesRes.data;
+
+        // Rebuild products and orders
+        const aggregatedProducts = aggregateProductsFromSales(salesData);
+        const newOrders = createOrdersFromSales(salesData);
+
+        setProducts(aggregatedProducts);
+        setOrders(newOrders);
+
+        alert('Sales saved successfully!');
+        setShowTakeSalesModal(false);
+      }
+    } catch (error) {
+      console.error('Error saving sales:', error);
+      alert('Failed to save sales.');
+    }
   };
 
   const handleCancelSales = () => {
     setShowTakeSalesModal(false);
-    setSalesItems([{ productId: '', quantity: '' }]);
+    setSalesItems([{ productName: '', quantity: '', price: 0 }]);
     setCustomerName('');
   };
-
-  // Filtered orders based on selected tab and search query
-  const filteredOrders = orders.filter(o => o.status === selectedTab && 
-    (o.orderId.toLowerCase().includes(searchQuery.toLowerCase()) || 
-     o.customer.toLowerCase().includes(searchQuery.toLowerCase()))
-  );
 
   // Styles (Blue theme)
   const containerStyle = {
     padding: '20px',
     fontFamily: 'Arial, sans-serif',
-    backgroundColor: '#fff', 
-    color: '#1565C0', // Dark blue text
+    backgroundColor: '#fff',
+    color: '#1565C0',
     minHeight: '100vh',
     boxSizing: 'border-box'
   };
@@ -208,7 +256,7 @@ const SalesDashboard = () => {
     marginBottom: '20px',
     fontSize: '2rem',
     fontWeight: 'bold',
-    color: '#1565C0' // Dark blue heading
+    color: '#1565C0'
   };
 
   const sectionHeadingStyle = {
@@ -221,7 +269,7 @@ const SalesDashboard = () => {
   const inputStyle = {
     padding: '10px',
     borderRadius: '4px',
-    border: '1px solid #2196F3', 
+    border: '1px solid #2196F3',
     fontSize: '16px',
     width: '300px',
     transition: 'border-color 0.3s ease, background-color 0.3s ease',
@@ -259,27 +307,17 @@ const SalesDashboard = () => {
     fontWeight: 'bold',
   };
 
-  const tabButtonStyle = (active) => ({
-    backgroundColor: active ? '#2196F3' : '#ccc',
-    color: 'white',
-    border: 'none',
-    padding: '8px 12px',
-    borderRadius: '4px',
-    cursor: 'pointer',
-    fontWeight: 'bold'
-  });
-
   const tableContainerStyle = {
     border: '1px solid #ccc',
     borderRadius: '4px',
     padding: '10px',
     maxHeight: '250px',
     overflowY: 'auto',
-    backgroundColor: '#E3F2FD' // Light blue background
+    backgroundColor: '#E3F2FD'
   };
 
   const tableHeaderRowStyle = {
-    background: '#BBDEFB' // Lighter blue for headers
+    background: '#BBDEFB'
   };
 
   const tableCellStyle = {
@@ -291,32 +329,35 @@ const SalesDashboard = () => {
     <div style={containerStyle}>
       <h2 style={headingStyle}>Sales Dashboard</h2>
 
-      {/* Products Section */}
+      {/* Products Section (from /sales/) */}
       <div style={{ marginBottom: '40px' }}>
         <h3 style={sectionHeadingStyle}>Products</h3>
         <div style={{ marginBottom: '10px', display: 'flex', gap: '10px' }}>
-          <button onClick={handleAddProduct} style={primaryButtonStyle}>Add Product</button>
           <button onClick={handleTakeSales} style={primaryButtonStyle}>Take Sales</button>
         </div>
         <div style={tableContainerStyle}>
           <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
             <thead>
               <tr style={tableHeaderRowStyle}>
-                <th style={tableCellStyle}>Product ID</th>
                 <th style={tableCellStyle}>Product Name</th>
-                <th style={tableCellStyle}>Quantity Sold</th>
+                <th style={tableCellStyle}>Price</th>
+                <th style={tableCellStyle}>Quantities Sold</th>
                 <th style={tableCellStyle}>Total Amount</th>
               </tr>
             </thead>
             <tbody>
-              {products.map(p => (
-                <tr key={p.id}>
-                  <td style={tableCellStyle}>{p.id}</td>
-                  <td style={tableCellStyle}>{p.name}</td>
-                  <td style={tableCellStyle}>{p.quantitySold}</td>
-                  <td style={tableCellStyle}>${p.totalAmount.toFixed(2)}</td>
-                </tr>
-              ))}
+              {products.map(p => {
+                const price = Number(p.price) || 0;
+                const totalAmount = Number(p.totalAmount) || 0;
+                return (
+                  <tr key={p.productName}>
+                    <td style={tableCellStyle}>{p.productName}</td>
+                    <td style={tableCellStyle}>${price.toFixed(2)}</td>
+                    <td style={tableCellStyle}>{p.quantitySold}</td>
+                    <td style={tableCellStyle}>${totalAmount.toFixed(2)}</td>
+                  </tr>
+                );
+              })}
               {products.length === 0 && (
                 <tr>
                   <td colSpan="4" style={{ padding: '8px', textAlign: 'center', backgroundColor:'#E3F2FD' }}>
@@ -333,36 +374,8 @@ const SalesDashboard = () => {
       <div style={{ marginBottom: '40px' }}>
         <h3 style={sectionHeadingStyle}>Sales Orders</h3>
         <p style={{ marginBottom: '10px', color: '#1565C0' }}>
-          Manage open and completed sales orders. Completing an order updates the product sales.
+          Below are the orders grouped by customers.
         </p>
-        
-        <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', alignItems: 'center' }}>
-          <div style={{ display: 'flex', gap: '10px' }}>
-            <button 
-              onClick={() => setSelectedTab('Open')}
-              style={tabButtonStyle(selectedTab === 'Open')}
-            >
-              Open Orders
-            </button>
-            <button
-              onClick={() => setSelectedTab('Completed')}
-              style={tabButtonStyle(selectedTab === 'Completed')}
-            >
-              Completed Orders
-            </button>
-          </div>
-          <div style={{ marginLeft: 'auto' }}>
-            <input
-              type="text"
-              placeholder="Search orders..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              style={inputStyle}
-              onFocus={handleInputFocus}
-              onBlur={handleInputBlur}
-            />
-          </div>
-        </div>
 
         <div style={tableContainerStyle}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -370,42 +383,33 @@ const SalesDashboard = () => {
               <tr style={tableHeaderRowStyle}>
                 <th style={tableCellStyle}>Order ID</th>
                 <th style={tableCellStyle}>Customer</th>
-                <th style={tableCellStyle}>Status</th>
                 <th style={tableCellStyle}>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {filteredOrders.map(order => (
+              {orders.map(order => (
                 <tr key={order.orderId}>
                   <td style={tableCellStyle}>{order.orderId}</td>
                   <td style={tableCellStyle}>{order.customer}</td>
-                  <td style={tableCellStyle}>{order.status}</td>
                   <td style={tableCellStyle}>
-                    {order.status === 'Open' && (
-                      <button 
-                        onClick={() => handleCompleteOrder(order.orderId)}
-                        style={primaryButtonStyle}
-                      >
-                        Mark Complete
-                      </button>
-                    )}
-                    {order.status === 'Completed' && (
-                      <>
-                        <button
-                          onClick={() => handleGenerateInvoice(order)}
-                          style={{ ...primaryButtonStyle, backgroundColor: '#1565C0', marginRight: '5px' }}
-                        >
-                          Generate Invoice
-                        </button>
-                        {/* Additional actions like Send Email can be added here */}
-                      </>
-                    )}
+                    <button
+                      onClick={() => handleShowOrder(order)}
+                      style={{ ...primaryButtonStyle, marginRight: '5px' }}
+                    >
+                      Show Order
+                    </button>
+                    <button
+                      onClick={() => handleGenerateInvoice(order)}
+                      style={primaryButtonStyle}
+                    >
+                      Generate Invoice
+                    </button>
                   </td>
                 </tr>
               ))}
-              {filteredOrders.length === 0 && (
+              {orders.length === 0 && (
                 <tr>
-                  <td colSpan="4" style={{ padding: '8px', textAlign: 'center', backgroundColor:'#E3F2FD' }}>
+                  <td colSpan="3" style={{ padding: '8px', textAlign: 'center', backgroundColor:'#E3F2FD' }}>
                     No orders found.
                   </td>
                 </tr>
@@ -415,8 +419,8 @@ const SalesDashboard = () => {
         </div>
       </div>
 
-      {/* Add Product Modal */}
-      {showAddProductModal && (
+      {/* Show Order Modal */}
+      {selectedOrder && (
         <div
           style={{
             position: 'fixed',
@@ -442,40 +446,33 @@ const SalesDashboard = () => {
               gap: '10px'
             }}
           >
-            <h3 style={{ color: '#1565C0', fontWeight: 'bold' }}>Add New Product</h3>
-            <input
-              type="text"
-              placeholder="Product ID"
-              value={newProductData.id}
-              onChange={(e) => handleNewProductChange('id', e.target.value)}
-              style={inputStyle}
-              onFocus={handleInputFocus}
-              onBlur={handleInputBlur}
-            />
-            <input
-              type="text"
-              placeholder="Product Name"
-              value={newProductData.name}
-              onChange={(e) => handleNewProductChange('name', e.target.value)}
-              style={inputStyle}
-              onFocus={handleInputFocus}
-              onBlur={handleInputBlur}
-            />
-            <input
-              type="number"
-              placeholder="Price"
-              value={newProductData.price}
-              onChange={(e) => handleNewProductChange('price', e.target.value)}
-              style={inputStyle}
-              onFocus={handleInputFocus}
-              onBlur={handleInputBlur}
-            />
+            <h3 style={{ color: '#1565C0', fontWeight: 'bold' }}>Order Details</h3>
+            <p><strong>Order ID:</strong> {selectedOrder.orderId}</p>
+            <p><strong>Customer:</strong> {selectedOrder.customer}</p>
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+              <thead>
+                <tr style={tableHeaderRowStyle}>
+                  <th style={tableCellStyle}>Product</th>
+                  <th style={tableCellStyle}>Qty</th>
+                  <th style={tableCellStyle}>Price</th>
+                </tr>
+              </thead>
+              <tbody>
+                {selectedOrder.items.map((item, idx) => {
+                  const itemPrice = Number(item.price) || 0;
+                  return (
+                    <tr key={idx}>
+                      <td style={tableCellStyle}>{item.productName}</td>
+                      <td style={tableCellStyle}>{item.quantity}</td>
+                      <td style={tableCellStyle}>${itemPrice.toFixed(2)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-              <button onClick={handleSaveProduct} style={primaryButtonStyle}>
-                Save
-              </button>
-              <button onClick={handleCancelProduct} style={negativeButtonStyle}>
-                Cancel
+              <button onClick={handleCloseOrderModal} style={negativeButtonStyle}>
+                Close
               </button>
             </div>
           </div>
@@ -521,31 +518,41 @@ const SalesDashboard = () => {
               onFocus={handleInputFocus}
               onBlur={handleInputBlur}
             />
-            {salesItems.map((si, index) => (
-              <div key={index} style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-                <select
-                  value={si.productId}
-                  onChange={(e) => handleSalesItemChange(index, 'productId', e.target.value)}
-                  style={{ flex: 1, padding: '10px', borderRadius: '4px', border: '1px solid #2196F3', backgroundColor: '#ffffff', color: '#1565C0' }}
-                  onFocus={handleInputFocus}
-                  onBlur={handleInputBlur}
-                >
-                  <option value="">Select Product</option>
-                  {products.map(p => (
-                    <option key={p.id} value={p.id}>{p.name}</option>
-                  ))}
-                </select>
-                <input
-                  type="number"
-                  placeholder="Qty"
-                  value={si.quantity}
-                  onChange={(e) => handleSalesItemChange(index, 'quantity', e.target.value)}
-                  style={{ width: '80px', padding: '10px', borderRadius: '4px', border: '1px solid #2196F3', backgroundColor: '#ffffff', color: '#1565C0' }}
-                  onFocus={handleInputFocus}
-                  onBlur={handleInputBlur}
-                />
-              </div>
-            ))}
+            {salesItems.map((si, index) => {
+              const price = Number(si.price) || 0;
+              return (
+                <div key={index} style={{ display: 'flex', flexDirection: 'column', gap: '5px', marginBottom: '10px' }}>
+                  <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                    <select
+                      value={si.productName}
+                      onChange={(e) => handleSalesItemChange(index, 'productName', e.target.value)}
+                      style={{ flex: 1, padding: '10px', borderRadius: '4px', border: '1px solid #2196F3', backgroundColor: '#ffffff', color: '#1565C0' }}
+                      onFocus={handleInputFocus}
+                      onBlur={handleInputBlur}
+                    >
+                      <option value="">Select Product</option>
+                      {inventoryProducts.map(prod => (
+                        <option key={prod.productName} value={prod.productName}>{prod.productName}</option>
+                      ))}
+                    </select>
+                    <input
+                      type="number"
+                      placeholder="Qty"
+                      value={si.quantity}
+                      onChange={(e) => handleSalesItemChange(index, 'quantity', e.target.value)}
+                      style={{ width: '80px', padding: '10px', borderRadius: '4px', border: '1px solid #2196F3', backgroundColor: '#ffffff', color: '#1565C0' }}
+                      onFocus={handleInputFocus}
+                      onBlur={handleInputBlur}
+                    />
+                  </div>
+                  {si.productName && (
+                    <div style={{ color: '#1565C0', fontSize: '14px' }}>
+                      Price: ${price.toFixed(2)}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
             <button
               onClick={handleAddSalesItemRow}
               style={{
@@ -572,6 +579,7 @@ const SalesDashboard = () => {
           </div>
         </div>
       )}
+
     </div>
   );
 };

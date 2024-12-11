@@ -7,8 +7,10 @@ const SignUp = () => {
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
+    dob: '',
     email: '',
     phone: '',
+    gender: '',
     password: '',
   });
 
@@ -160,14 +162,35 @@ const SignUp = () => {
 
     if (!emailError && !phoneError && passwordStrength === 'Strong') {
       try {
-        const response = await axios.post('http://34.8.207.205/users/', {
+        // Create the user
+        const response = await axios.post('/users/', {
           email: formData.email,
           password: formData.password,
         });
 
         if (response.status === 200 || response.status === 201) {
-          alert('Sign up successful! Please sign in now.');
-          navigate('/signin');
+          // After successful user creation, create their profile
+          try {
+            const profileResponse = await axios.post('/users/profile', {
+              firstName: formData.firstName,
+              lastName: formData.lastName,
+              email: formData.email,
+              dob: formData.dob,
+              phone: parseInt(formData.phone, 10),
+              gender: formData.gender
+            });
+
+            if (profileResponse.status === 200 || profileResponse.status === 201) {
+              alert('Sign up successful! Please sign in now.');
+              navigate('/signin');
+            } else {
+              alert('User created, but profile creation failed. Please try signing in and completing your profile later.');
+              navigate('/signin');
+            }
+          } catch (profileError) {
+            console.error('Profile creation error:', profileError);
+            alert('Failed to create profile. Please try again later.');
+          }
         }
       } catch (error) {
         if (error.response) {
@@ -230,6 +253,17 @@ const SignUp = () => {
             </div>
             <div style={styles.inputContainer}>
               <input
+                type="text"
+                name="dob"
+                placeholder="Date of Birth (e.g., 5th March 2002)"
+                style={styles.input}
+                value={formData.dob}
+                onChange={handleChange}
+                required
+              />
+            </div>
+            <div style={styles.inputContainer}>
+              <input
                 type="email"
                 name="email"
                 placeholder="Enter email"
@@ -253,7 +287,13 @@ const SignUp = () => {
             </div>
             {errors.phone && <p style={styles.errorMessage}>{errors.phone}</p>}
             <div style={styles.inputContainer}>
-              <select style={styles.input} required>
+              <select
+                name="gender"
+                style={styles.input}
+                value={formData.gender}
+                onChange={handleChange}
+                required
+              >
                 <option value="">Select Gender</option>
                 <option value="male">Male</option>
                 <option value="female">Female</option>

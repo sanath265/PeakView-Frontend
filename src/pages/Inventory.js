@@ -1,60 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import axios from 'axios';
 
 const Inventory = () => {
-  const [products, setProducts] = useState([
-    { id: 1, name: 'Product A', stock: 50, threshold: 20, cost: 10 },
-    { id: 2, name: 'Product B', stock: 10, threshold: 15, cost: 15 },
-    { id: 3, name: 'Another Product', stock: 30, threshold: 10, cost: 5 },
-  ]);
-
+  const [products, setProducts] = useState([]);
   const [showModal, setShowModal] = useState(false);
-  const [newProducts, setNewProducts] = useState([{ name: '', stock: '', threshold: '', cost: '' }]);
+  const [newProducts, setNewProducts] = useState([{ productName: '', Stock: '', Threshold: '', Cost: '' }]);
   const [editMode, setEditMode] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-
-  const handleAddProductRow = () => {
-    setNewProducts([...newProducts, { name: '', stock: '', threshold: '', cost: '' }]);
-  };
-
-  const handleNewProductChange = (index, field, value) => {
-    const updatedProducts = [...newProducts];
-    updatedProducts[index][field] = value;
-    setNewProducts(updatedProducts);
-  };
-
-  const handleDeleteNewProductRow = (indexToDelete) => {
-    const updatedProducts = newProducts.filter((_, index) => index !== indexToDelete);
-    setNewProducts(updatedProducts);
-  };
-
-  const saveNewProducts = () => {
-    const newIdStart = products.length > 0 ? products[products.length - 1].id : 0;
-    const productsWithIds = newProducts.map((product, index) => ({
-      ...product,
-      id: newIdStart + index + 1,
-    }));
-    setProducts([...products, ...productsWithIds]);
-    setNewProducts([{ name: '', stock: '', threshold: '', cost: '' }]);
-    setShowModal(false);
-  };
-
-  const handleEditChange = (index, field, value) => {
-    const updatedProducts = [...products];
-    updatedProducts[index][field] = value;
-    setProducts(updatedProducts);
-  };
-
-  const toggleEditMode = () => {
-    setEditMode(!editMode);
-  };
-
-  const handleDeleteRow = (id) => {
-    setProducts(products.filter((product) => product.id !== id));
-  };
-
-  const filteredProducts = products.filter((product) =>
-    product.name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
 
   const positiveButtonStyle = {
     backgroundColor: '#4caf50', 
@@ -79,23 +31,173 @@ const Inventory = () => {
   const searchInputStyle = {
     padding: '10px',
     borderRadius: '4px',
-    border: '1px solid #4caf50',  // green border
+    border: '1px solid #4caf50',  
     fontSize: '16px',
-    width: '300px',               // bigger width
+    width: '300px',               
     transition: 'border-color 0.3s ease, background-color 0.3s ease',
-    backgroundColor: '#ffffff',   // white background by default
-    color: '#2e7d32',             // dark green text
+    backgroundColor: '#ffffff',   
+    color: '#2e7d32',             
   };
 
   const handleSearchFocus = (e) => {
-    e.target.style.borderColor = '#2e7d32';    // darker green border on focus
-    e.target.style.backgroundColor = '#e8f5e9'; // light green background on focus
+    e.target.style.borderColor = '#2e7d32'; 
+    e.target.style.backgroundColor = '#e8f5e9'; 
   };
 
   const handleSearchBlur = (e) => {
     e.target.style.borderColor = '#4caf50';
     e.target.style.backgroundColor = '#ffffff';
   };
+
+  // Fetch inventory data from server using axios
+  const fetchInventory = async () => {
+    try {
+      const response = await axios.get('/inventory/');
+      setProducts(response.data);
+    } catch (error) {
+      if (error.response) {
+        console.error('Server error:', error.response);
+        alert(`Server error: ${error.response.data.message || 'Failed to fetch inventory.'}`);
+      } else if (error.request) {
+        console.error('Network error:', error.request);
+        alert('Network error: Unable to reach the server.');
+      } else {
+        console.error('Error:', error.message);
+        alert('Unexpected error occurred.');
+      }
+    }
+  };
+
+  useEffect(() => {
+    fetchInventory();
+  }, []);
+
+  const handleAddProductRow = () => {
+    setNewProducts([...newProducts, { productName: '', Stock: '', Threshold: '', Cost: '' }]);
+  };
+
+  const handleNewProductChange = (index, field, value) => {
+    const updatedProducts = [...newProducts];
+    updatedProducts[index][field] = value;
+    setNewProducts(updatedProducts);
+  };
+
+  const handleDeleteNewProductRow = (indexToDelete) => {
+    const updatedProducts = newProducts.filter((_, index) => index !== indexToDelete);
+    setNewProducts(updatedProducts);
+  };
+
+  const saveNewProducts = async () => {
+    const inventories = newProducts.map(prod => ({
+      productName: prod.productName,
+      Stock: Number(prod.Stock),
+      Threshold: Number(prod.Threshold),
+      Cost: Number(prod.Cost),
+      charge: {
+        amount: 19,
+        card: {
+          token: "tok_visa"
+        }
+      }
+    }));
+
+    const postBody = {
+      inventories,
+      reset: false
+    };
+
+    try {
+      const response = await axios.post('/inventory/', postBody, {
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (response.status === 200 || response.status === 201) {
+        // After successfully saving, re-fetch the inventory
+        await fetchInventory();
+        setNewProducts([{ productName: '', Stock: '', Threshold: '', Cost: '' }]);
+        setShowModal(false);
+      }
+    } catch (error) {
+      if (error.response) {
+        console.error('Server error:', error.response);
+        alert(`Error saving new products: ${error.response.data.message || 'Failed to save.'}`);
+      } else if (error.request) {
+        console.error('Network error:', error.request);
+        alert('Network error: Unable to reach the server.');
+      } else {
+        console.error('Error:', error.message);
+        alert('Unexpected error occurred.');
+      }
+    }
+  };
+
+  const handleEditChange = (index, field, value) => {
+    const updatedProducts = [...products];
+    updatedProducts[index][field] = value;
+    setProducts(updatedProducts);
+  };
+
+  const toggleEditMode = () => {
+    setEditMode(!editMode);
+  };
+
+  const handleDeleteRow = (id) => {
+    setProducts(products.filter((product) => product._id !== id));
+    // If needed, implement a DELETE request to the server here.
+  };
+
+  const saveChanges = async () => {
+    // Prepare the POST body with "reset": true and current products
+    const inventories = products.map(prod => ({
+      productName: prod.productName,
+      Stock: Number(prod.Stock),
+      Threshold: Number(prod.Threshold),
+      Cost: Number(prod.Cost),
+      charge: {
+        amount: 19,
+        card: {
+          token: "tok_visa"
+        }
+      }
+    }));
+
+    const postBody = {
+      inventories,
+      reset: true
+    };
+
+    try {
+      const response = await axios.post('/inventory/', postBody, {
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (response.status === 200 || response.status === 201) {
+        // After successful POST, fetch inventory again
+        await fetchInventory();
+        // Exit edit mode
+        setEditMode(false);
+      }
+    } catch (error) {
+      if (error.response) {
+        console.error('Server error:', error.response);
+        alert(`Error saving changes: ${error.response.data.message || 'Failed to save.'}`);
+      } else if (error.request) {
+        console.error('Network error:', error.request);
+        alert('Network error: Unable to reach the server.');
+      } else {
+        console.error('Error:', error.message);
+        alert('Unexpected error occurred.');
+      }
+    }
+  };
+
+  const filteredProducts = products.filter((product) =>
+    product.productName.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
   return (
     <div
@@ -161,53 +263,53 @@ const Inventory = () => {
           </thead>
           <tbody>
             {filteredProducts.map((product, index) => (
-              <tr key={product.id} style={{ backgroundColor: '#c8e6c9' }}>
+              <tr key={product._id} style={{ backgroundColor: '#c8e6c9' }}>
                 {editMode ? (
                   <>
                     <td style={{ borderBottom: '1px solid #eee', padding: '8px' }}>
                       <input
                         type="text"
-                        value={product.name}
-                        onChange={(e) => handleEditChange(index, 'name', e.target.value)}
+                        value={product.productName}
+                        onChange={(e) => handleEditChange(index, 'productName', e.target.value)}
                         style={{ padding: '4px', borderRadius: '4px', border: '1px solid #ccc' }}
                       />
                     </td>
                     <td style={{ borderBottom: '1px solid #eee', padding: '8px' }}>
                       <input
                         type="number"
-                        value={product.stock}
-                        onChange={(e) => handleEditChange(index, 'stock', e.target.value)}
+                        value={product.Stock}
+                        onChange={(e) => handleEditChange(index, 'Stock', e.target.value)}
                         style={{ padding: '4px', borderRadius: '4px', border: '1px solid #ccc' }}
                       />
                     </td>
                     <td style={{ borderBottom: '1px solid #eee', padding: '8px' }}>
                       <input
                         type="number"
-                        value={product.threshold}
-                        onChange={(e) => handleEditChange(index, 'threshold', e.target.value)}
+                        value={product.Threshold}
+                        onChange={(e) => handleEditChange(index, 'Threshold', e.target.value)}
                         style={{ padding: '4px', borderRadius: '4px', border: '1px solid #ccc' }}
                       />
                     </td>
                     <td style={{ borderBottom: '1px solid #eee', padding: '8px' }}>
                       <input
                         type="number"
-                        value={product.cost}
-                        onChange={(e) => handleEditChange(index, 'cost', e.target.value)}
+                        value={product.Cost}
+                        onChange={(e) => handleEditChange(index, 'Cost', e.target.value)}
                         style={{ padding: '4px', borderRadius: '4px', border: '1px solid #ccc' }}
                       />
                     </td>
                     <td style={{ borderBottom: '1px solid #eee', padding: '8px' }}>
-                      <button onClick={() => handleDeleteRow(product.id)} style={negativeButtonStyle}>
+                      <button onClick={() => handleDeleteRow(product._id)} style={negativeButtonStyle}>
                         Delete
                       </button>
                     </td>
                   </>
                 ) : (
                   <>
-                    <td style={{ borderBottom: '1px solid #eee', padding: '8px' }}>{product.name}</td>
-                    <td style={{ borderBottom: '1px solid #eee', padding: '8px' }}>{product.stock}</td>
-                    <td style={{ borderBottom: '1px solid #eee', padding: '8px' }}>{product.threshold}</td>
-                    <td style={{ borderBottom: '1px solid #eee', padding: '8px' }}>${product.cost}</td>
+                    <td style={{ borderBottom: '1px solid #eee', padding: '8px' }}>{product.productName}</td>
+                    <td style={{ borderBottom: '1px solid #eee', padding: '8px' }}>{product.Stock}</td>
+                    <td style={{ borderBottom: '1px solid #eee', padding: '8px' }}>{product.Threshold}</td>
+                    <td style={{ borderBottom: '1px solid #eee', padding: '8px' }}>${product.Cost}</td>
                   </>
                 )}
               </tr>
@@ -225,7 +327,7 @@ const Inventory = () => {
 
       {editMode && (
         <div style={{ marginTop: '20px' }}>
-          <button onClick={() => setEditMode(false)} style={positiveButtonStyle}>
+          <button onClick={saveChanges} style={positiveButtonStyle}>
             Save Changes
           </button>
         </div>
@@ -288,8 +390,8 @@ const Inventory = () => {
                         <input
                           type="text"
                           placeholder="Product Name"
-                          value={product.name}
-                          onChange={(e) => handleNewProductChange(index, 'name', e.target.value)}
+                          value={product.productName}
+                          onChange={(e) => handleNewProductChange(index, 'productName', e.target.value)}
                           style={{ padding: '4px', borderRadius: '4px', border: '1px solid #ccc', width: '100%' }}
                         />
                       </td>
@@ -297,8 +399,8 @@ const Inventory = () => {
                         <input
                           type="number"
                           placeholder="Stock"
-                          value={product.stock}
-                          onChange={(e) => handleNewProductChange(index, 'stock', e.target.value)}
+                          value={product.Stock}
+                          onChange={(e) => handleNewProductChange(index, 'Stock', e.target.value)}
                           style={{ padding: '4px', borderRadius: '4px', border: '1px solid #ccc', width: '100%' }}
                         />
                       </td>
@@ -306,8 +408,8 @@ const Inventory = () => {
                         <input
                           type="number"
                           placeholder="Threshold"
-                          value={product.threshold}
-                          onChange={(e) => handleNewProductChange(index, 'threshold', e.target.value)}
+                          value={product.Threshold}
+                          onChange={(e) => handleNewProductChange(index, 'Threshold', e.target.value)}
                           style={{ padding: '4px', borderRadius: '4px', border: '1px solid #ccc', width: '100%' }}
                         />
                       </td>
@@ -315,8 +417,8 @@ const Inventory = () => {
                         <input
                           type="number"
                           placeholder="Cost"
-                          value={product.cost}
-                          onChange={(e) => handleNewProductChange(index, 'cost', e.target.value)}
+                          value={product.Cost}
+                          onChange={(e) => handleNewProductChange(index, 'Cost', e.target.value)}
                           style={{ padding: '4px', borderRadius: '4px', border: '1px solid #ccc', width: '100%' }}
                         />
                       </td>
